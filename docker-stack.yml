@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web:
+    image: ${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: overlay
