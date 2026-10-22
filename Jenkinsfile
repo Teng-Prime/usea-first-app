@@ -1,60 +1,40 @@
 pipeline {
     agent any
-
     environment {
-        AWS_ACCOUNT_ID = '781493733610'
+        AWS_ACCOUNT_ID = 'YOUR_AWS_ACCOUNT_ID'
         AWS_REGION     = 'ap-southeast-2'
-        ECR_REPO_NAME  = 'usea-first-appb'
-        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        SWARM_MANAGER  = '32.236.174.210'
-        IMAGE_TAG      = "${BUILD_NUMBER}"
+        ECR_REPO_NAME  = 'your-web-app'
+        SWARM_MANAGER  = '172.31.47.60'
     }
-
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-
-        stage('Build Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
                 script {
-                    echo "Building Docker Image version: ${IMAGE_TAG}"
-                    sh "docker build -t ${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG} ."
+                    sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    docker build -t ${ECR_REPO_NAME}:latest .
+                    docker tag ${ECR_REPO_NAME}:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:latest
+                    docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:latest
+                    """
                 }
             }
         }
-
-        stage('Push Image to ECR') {
+        stage('Deploy to Docker Swarm') {
             steps {
-                script {
-                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
-                    sh "docker push ${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}"
+                sshagent(['swarm-ssh-key']) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ubuntu@${SWARM_MANAGER} "
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        docker service update --image ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:latest --with-registry-auth my_web_app
+                    "
+                    """
                 }
             }
-        }
-
-        stage('Deploy to Swarm') {
-            steps {
-                script {
-                    echo "Deploying update to Docker Swarm Cluster..."
-                    sshagent(['ec2-ssh-key']) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ubuntu@${SWARM_MANAGER} "
-                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY} &&
-                                ECR_REGISTRY=${ECR_REGISTRY} ECR_REPO_NAME=${ECR_REPO_NAME} IMAGE_TAG=${IMAGE_TAG} docker stack deploy --with-registry-auth -c docker-stack.yml mystack
-                            "
-                        """
-                    }
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            sh "docker rmi ${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG} || true"
         }
     }
 }
