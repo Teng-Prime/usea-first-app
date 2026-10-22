@@ -6,7 +6,7 @@ pipeline {
         AWS_REGION     = 'ap-southeast-2'
         ECR_REPO_NAME  = 'usea-first-appb'
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        SWARM_MANAGER  = '<SWARM_MANAGER_PUBLIC_IP>'
+        SWARM_MANAGER  = '32.236.174.210'
         IMAGE_TAG      = "${BUILD_NUMBER}"
     }
 
